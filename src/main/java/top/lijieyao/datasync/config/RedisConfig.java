@@ -1,5 +1,8 @@
 package top.lijieyao.datasync.config;
 
+import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -11,7 +14,11 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
  * @Date 2020/6/9 14:28
  **/
 @Configuration
+@Slf4j
 public class RedisConfig {
+
+    @Autowired
+    RedissonClient redissonClient;
 
     @Bean(name = "stringSerializeRedisTemplate")
     public RedisTemplate<String, String> redisTemplate(RedisConnectionFactory redisConnectionFactory) {
@@ -27,4 +34,5 @@ public class RedisConfig {
         redisTemplate.setHashValueSerializer(new StringRedisSerializer());
         return redisTemplate;
     }
+
 }

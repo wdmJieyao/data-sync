@@ -11,4 +11,5 @@ public class IntConstantPool {
     }
 
     public static final int COLLECT_OF_FIRST = 0;
+    public static final int COLLECT_OF_SECOND = 1;
 }

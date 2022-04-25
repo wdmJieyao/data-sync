@@ -7,6 +7,8 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisStringCommands;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.RedisCallback;
@@ -15,11 +17,9 @@ import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.types.Expiration;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.stereotype.Component;
+import top.lijieyao.datasync.comment.RedisTemplateThreadLocal;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -34,13 +34,19 @@ public class RedisUtil {
     private RedisUtil() {
     }
 
-
     private static RedisTemplate<String, String> redisTemplate;
 
     @Autowired
-    public void setRedisTemplate(@Qualifier("stringSerializeRedisTemplate") RedisTemplate<String, String> redisTemplate) {
+    public void setRedisTemplate(@Qualifier(value = "stringSerializeRedisTemplate") RedisTemplate<String, String> redisTemplate) {
         RedisUtil.redisTemplate = redisTemplate;
     }
+
+
+    private static RedisTemplate<String, String> getRedisTemplate() {
+        return Optional.ofNullable(RedisTemplateThreadLocal.get())
+                .orElse(redisTemplate);
+    }
+
 
     /**
      * set string
@@ -48,7 +54,7 @@ public class RedisUtil {
      * @param value
      */
     public static void setString(String key, String value) {
-        redisTemplate.opsForValue().set(key, value);
+        getRedisTemplate().opsForValue().set(key, value);
     }
 
     /**
@@ -61,9 +67,9 @@ public class RedisUtil {
     public static void setString(String key, String value, long ttl, TimeUnit timeUnit) {
         log.info("key:{}  value:{}  ttl:{}", key, value, ttl);
         if (ttl > 0) {
-            redisTemplate.opsForValue().set(key, value, ttl, timeUnit);
+            getRedisTemplate().opsForValue().set(key, value, ttl, timeUnit);
         } else {
-            redisTemplate.opsForValue().set(key, value);
+            getRedisTemplate().opsForValue().set(key, value);
         }
 
     }
@@ -97,7 +103,7 @@ public class RedisUtil {
      * @return
      */
     public static String get(String key) {
-        return redisTemplate.opsForValue().get(key);
+        return getRedisTemplate().opsForValue().get(key);
     }
 
     /**
@@ -108,7 +114,7 @@ public class RedisUtil {
      * @return
      */
     public static <T> T get(String key, Class<T> classOfT) {
-        String json = redisTemplate.opsForValue().get(key);
+        String json = getRedisTemplate().opsForValue().get(key);
         if (StringUtils.isEmpty(json)) {
             return null;
         }
@@ -123,7 +129,7 @@ public class RedisUtil {
      * @return
      */
     public static <T> List<T> getArrayObj(String key, Class<T> classOfT) {
-        String json = redisTemplate.opsForValue().get(key);
+        String json = getRedisTemplate().opsForValue().get(key);
         if (StringUtils.isEmpty(json)) {
             return null;
         }
@@ -138,7 +144,7 @@ public class RedisUtil {
      * @return
      */
     public static Boolean del(String key) {
-        return redisTemplate.delete(key);
+        return getRedisTemplate().delete(key);
     }
 
 
@@ -149,7 +155,7 @@ public class RedisUtil {
      * @return
      */
     public static Long sAdd(String key, String... values) {
-        return redisTemplate.opsForSet().add(key, values);
+        return getRedisTemplate().opsForSet().add(key, values);
     }
 
 
@@ -159,7 +165,7 @@ public class RedisUtil {
      * @return String
      */
     public static String zPop(String key) {
-        return redisTemplate.opsForSet().pop(key);
+        return getRedisTemplate().opsForSet().pop(key);
     }
 
 
@@ -169,7 +175,7 @@ public class RedisUtil {
      * @return
      */
     public static Long incr(String key) {
-        return redisTemplate.opsForValue().increment(key);
+        return getRedisTemplate().opsForValue().increment(key);
     }
 
 
@@ -179,9 +185,10 @@ public class RedisUtil {
      * @return
      */
     public static Long getIncr(String key) {
-        RedisSerializer<String> stringSerializer = redisTemplate.getStringSerializer();
+        RedisSerializer<String> stringSerializer = getRedisTemplate().getStringSerializer();
         byte[] serialize = stringSerializer.serialize(key);
-        String count = stringSerializer.deserialize(redisTemplate.getConnectionFactory().getConnection().get(serialize));
+        Objects.requireNonNull(serialize, "serialize can be not null!");
+        String count = stringSerializer.deserialize(getRedisConn().get(serialize));
         if (StringUtils.isEmpty(count)) {
             return 0L;
         }
@@ -196,7 +203,7 @@ public class RedisUtil {
      * @return
      */
     public static Long rPush(String key, String value) {
-        ListOperations<String, String> opsForList = redisTemplate.opsForList();
+        ListOperations<String, String> opsForList = getRedisTemplate().opsForList();
         return opsForList.rightPush(key, value);
     }
 
@@ -207,7 +214,7 @@ public class RedisUtil {
      * @return
      */
     public static String lPop(String key) {
-        ListOperations<String, String> opsForList = redisTemplate.opsForList();
+        ListOperations<String, String> opsForList = getRedisTemplate().opsForList();
         return opsForList.leftPop(key);
     }
 
@@ -218,7 +225,7 @@ public class RedisUtil {
      * @return
      */
     public static Long lLen(String key) {
-        ListOperations<String, String> opsForList = redisTemplate.opsForList();
+        ListOperations<String, String> opsForList = getRedisTemplate().opsForList();
         return opsForList.size(key);
     }
 
@@ -230,7 +237,7 @@ public class RedisUtil {
      * @return
      */
     public static Long zRank(String key, String member) {
-        ZSetOperations<String, String> opsForZSet = redisTemplate.opsForZSet();
+        ZSetOperations<String, String> opsForZSet = getRedisTemplate().opsForZSet();
         return opsForZSet.rank(key, member);
     }
 
@@ -242,7 +249,7 @@ public class RedisUtil {
      * @return
      */
     public static Long zReverseRank(String key, String member) {
-        ZSetOperations<String, String> opsForZSet = redisTemplate.opsForZSet();
+        ZSetOperations<String, String> opsForZSet = getRedisTemplate().opsForZSet();
         return opsForZSet.reverseRank(key, member);
     }
 
@@ -254,7 +261,7 @@ public class RedisUtil {
      * @param ttl
      */
     public static void zAdd(String key, String member, long score, long ttl, TimeUnit timeUnit) {
-        ZSetOperations<String, String> opsForZSet = redisTemplate.opsForZSet();
+        ZSetOperations<String, String> opsForZSet = getRedisTemplate().opsForZSet();
         opsForZSet.add(key, member, score);
         expire(key, ttl, timeUnit);
     }
@@ -268,7 +275,7 @@ public class RedisUtil {
      * @return
      */
     public static Long zIncr(String key, String member, long ttl, TimeUnit timeUnit) {
-        ZSetOperations<String, String> opsForZSet = redisTemplate.opsForZSet();
+        ZSetOperations<String, String> opsForZSet = getRedisTemplate().opsForZSet();
         Double score = opsForZSet.incrementScore(key, member, 1);
         expire(key, ttl, timeUnit);
         if (score == null) {
@@ -286,7 +293,7 @@ public class RedisUtil {
      */
     public static Boolean expire(String key, long ttl, TimeUnit timeUnit) {
         if (ttl > 0) {
-            return redisTemplate.expire(key, ttl, timeUnit);
+            return getRedisTemplate().expire(key, ttl, timeUnit);
         }
         return false;
     }
@@ -297,7 +304,7 @@ public class RedisUtil {
      * @param key
      */
     public static Set<ZSetOperations.TypedTuple<String>> zRange(String key, long start, long end) {
-        ZSetOperations<String, String> opsForZSet = redisTemplate.opsForZSet();
+        ZSetOperations<String, String> opsForZSet = getRedisTemplate().opsForZSet();
         return opsForZSet.rangeWithScores(key, start, end);
     }
 
@@ -307,7 +314,7 @@ public class RedisUtil {
      * @param key
      */
     public static Set<ZSetOperations.TypedTuple<String>> zReverseRange(String key, long start, long end) {
-        ZSetOperations<String, String> opsForZSet = redisTemplate.opsForZSet();
+        ZSetOperations<String, String> opsForZSet = getRedisTemplate().opsForZSet();
         return opsForZSet.reverseRangeWithScores(key, start, end);
     }
 
@@ -319,12 +326,12 @@ public class RedisUtil {
      * @return
      */
     public static <T> List<T> multiGet(List<String> keys, Class<T> classOfT) {
-        List<Object> jsonList = redisTemplate.executePipelined((RedisCallback<String>) connection -> {
+        List<Object> jsonList = getRedisTemplate().executePipelined((RedisCallback<String>) connection -> {
             for (String key : keys) {
                 connection.get(key.getBytes());
             }
             return null;
-        }, redisTemplate.getValueSerializer());
+        }, getRedisTemplate().getValueSerializer());
         List<T> resultList = new ArrayList<>();
         if (CollectionUtils.isEmpty(jsonList)) {
             return resultList;
@@ -342,8 +349,8 @@ public class RedisUtil {
      * @param ttl
      * @param timeUnit
      */
-    public static void multiSetObj(Map<String, ? extends Object> map, long ttl, TimeUnit timeUnit) {
-        redisTemplate.executePipelined((RedisCallback<Void>) connection -> {
+    public static void multiSetObj(Map<String, ?> map, long ttl, TimeUnit timeUnit) {
+        getRedisTemplate().executePipelined((RedisCallback<Void>) connection -> {
             for (Map.Entry<String, ?> entry : map.entrySet()) {
                 String key = entry.getKey();
                 Object value = entry.getValue();
@@ -355,7 +362,7 @@ public class RedisUtil {
             }
             log.info("multiSetObj count:{}", map.size());
             return null;
-        }, redisTemplate.getValueSerializer());
+        }, getRedisTemplate().getValueSerializer());
     }
 
 
@@ -363,7 +370,7 @@ public class RedisUtil {
      * multiple set Object,using pipeline
      * @param map
      */
-    public static void multiSetObj(Map<String, ? extends Object> map) {
+    public static void multiSetObj(Map<String, ?> map) {
         multiSetObj(map, 0, null);
     }
 
@@ -374,7 +381,7 @@ public class RedisUtil {
      * @param timeUnit
      */
     public static void multiSetStr(Map<String, String> map, long ttl, TimeUnit timeUnit) {
-        redisTemplate.executePipelined((RedisCallback<Void>) connection -> {
+        getRedisTemplate().executePipelined((RedisCallback<Void>) connection -> {
             for (Map.Entry<String, String> entry : map.entrySet()) {
                 String key = entry.getKey();
                 String value = entry.getValue();
@@ -383,11 +390,10 @@ public class RedisUtil {
                 } else {
                     connection.set(key.getBytes(), value.getBytes());
                 }
-
             }
             log.info("multiSetStr count:{}", map.size());
             return null;
-        }, redisTemplate.getValueSerializer());
+        }, getRedisTemplate().getValueSerializer());
     }
 
 
@@ -406,12 +412,12 @@ public class RedisUtil {
      * @return
      */
     public static Long zCard(String key) {
-        return redisTemplate.opsForZSet().zCard(key);
+        return getRedisTemplate().opsForZSet().zCard(key);
     }
 
 
     public static Long incrBy(String key, long delta) {
-        return redisTemplate.opsForValue().increment(key, delta);
+        return getRedisTemplate().opsForValue().increment(key, delta);
     }
 
 
@@ -421,7 +427,7 @@ public class RedisUtil {
      * @return
      */
     public static Long incrAndExpire(String key, long ttl, TimeUnit timeUnit) {
-        Long incr = redisTemplate.opsForValue().increment(key);
+        Long incr = getRedisTemplate().opsForValue().increment(key);
         expire(key, ttl, timeUnit);
         return incr;
     }
@@ -433,8 +439,25 @@ public class RedisUtil {
      * @param member
      */
     public static Boolean sIsMember(String setKey, String member) {
-        return redisTemplate.opsForSet().isMember(setKey, member);
+        return getRedisTemplate().opsForSet().isMember(setKey, member);
     }
 
 
+    /**
+     * 安全获取redis连接
+     * @return RedisConnection
+     */
+    public static RedisConnection getRedisConn() {
+        return Optional.ofNullable(getRedisTemplate().getConnectionFactory())
+                .map(RedisConnectionFactory::getConnection)
+                .orElseThrow(() -> new RuntimeException("RedisUtil..redisTemplate#getConnectionFactory() is null !!!"));
+    }
+
+    /**
+     * 切换数据库
+     * @param DbIndex
+     */
+    public synchronized static void switchDatabase(int DbIndex) {
+        RedissonUtils.switchDatabase(DbIndex);
+    }
 }
